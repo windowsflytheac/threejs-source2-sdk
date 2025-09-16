@@ -1,4 +1,6 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import { Weapons } from './weapons.js';
+import { Menu } from './menu.js';
 
 export class Engine {
     constructor(opts = {}) {
@@ -19,16 +21,17 @@ export class Engine {
             jumpSpeed: 6,
             onGround: false,
             height: 1.6,
-            noclip: false
+            noclip: false,
+            inventory: [],
+            equipped: null
         };
 
         this.gravity = -18.0;
         this.groundY = 0.0;
-
         this.rotation = { x: 0, y: 0 };
         this.keys = {};
 
-        // Dev settings
+        // Dev & settings
         this.consoleOpen = false;
         this.consoleElement = null;
         this.commands = {};
@@ -36,6 +39,9 @@ export class Engine {
         this.showFPS = false;
         this.thirdPerson = false;
         this.fpsCounter = null;
+
+        this.menu = new Menu(this);
+        this.weapons = new Weapons(this);
 
         this._bindEvents();
         this._buildScene();
@@ -89,7 +95,7 @@ export class Engine {
 
         window.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === this.renderer.domElement && !this.consoleOpen) {
-                const sensitivity = 0.0015;
+                const sensitivity = this.menu ? this.menu.mouseSensitivity : 0.0015;
                 this.rotation.y -= e.movementX * sensitivity;
                 this.rotation.x -= e.movementY * sensitivity;
                 this.rotation.x = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, this.rotation.x));
@@ -137,6 +143,7 @@ export class Engine {
                 const args = line.split(' ');
                 const cmd = args.shift();
                 if(this.commands[cmd]) this.commands[cmd](...args);
+                else this._logToConsole(`Unknown command: ${cmd}`);
                 this._logToConsole('> ' + line);
                 input.value = '';
             }
@@ -169,43 +176,49 @@ export class Engine {
                     this._logToConsole(`noclip: ${this.player.noclip}`);
                 }
             },
-            cl_showfps: (val) => { this.showFPS = !!parseInt(val); },
+            cl_showfps: (val) => { this.showFPS = true; },
             sv_cheats: (val) => { this.sv_cheats = !!parseInt(val); this._logToConsole(`sv_cheats: ${this.sv_cheats}`); },
-            thirdperson: () => { this.thirdPerson = !this.thirdPerson; this._logToConsole(`thirdPerson: ${this.thirdPerson}`); },
             impulse: (val) => { 
-                if (!this.sv_cheats) return;
-
-                const force = parseFloat(val);
-                if (isNaN(force)) {
-                    console.warn("Impulse requires a number! Usage: impulse <force>");
+                if(!this.sv_cheats) return;
+                let force = parseFloat(val);
+                if(isNaN(force)){
+                    this._logToConsole("Impulse requires a number! Usage: impulse <force>");
                     return;
                 }
-
-                const MAX_SAFE = 100;
-                if (Math.abs(force) > MAX_SAFE) {
-                    const crashDump = `
-💥 SYSTEM_MATH_CALC_OVERLOAD 💥
-Player coordinates: X=${this.player.pos.x.toFixed(2)}, Y=${this.player.pos.y.toFixed(2)}, Z=${this.player.pos.z.toFixed(2)}
-Velocity: X=${this.player.vel.x.toFixed(2)}, Y=${force.toExponential()}, Z=${this.player.vel.z.toFixed(2)}
-Memory usage: ${Math.floor(Math.random()*10000)}MB
-Error code: SYSTEM_MATH_CALC_OVERLOAD
-Timestamp: ${new Date().toISOString()}
-`;
-                    if(this.consoleElement) {
-                        const div = document.createElement('div');
-                        div.style.color = '#ff0000';
-                        div.style.fontWeight = 'bold';
-                        div.textContent = crashDump;
-                        this.consoleElement.appendChild(div);
-                    }
-                    console.error(crashDump);
-                    throw new Error("💥 Engine crash! SYSTEM_MATH_CALC_OVERLOAD triggered.");
+                if(force < 0){
+                    this._crash('SYSTEM_NEGATIVE_IMPULSE', force);
                 }
-
+                if(!isFinite(force) || force > 1e9){
+                    this._crash('SYSTEM_MATH_CALC_OVERLOAD', force);
+                }
                 this.player.vel.y += force;
-                this._logToConsole(`Impulse applied: ${force}`);
-            }
+                this._logToConsole(`Impulse applied: ${force} vertical`);
+            },
+            thirdperson: () => { this.thirdPerson = !this.thirdPerson; this._logToConsole(`thirdPerson: ${this.thirdPerson}`); },
+            giveweapon: (name) => { this.weapons.giveWeapon(name); },
+            setgravity: (val) => { this.gravity = parseFloat(val); this._logToConsole(`Gravity set to ${this.gravity}`); },
+            teleport: (x, y, z) => { this.player.pos.set(parseFloat(x), parseFloat(y), parseFloat(z)); }
         };
+    }
+
+    _crash(type, val){
+        const dump = {
+            type,
+            timestamp: Date.now(),
+            pos: this.player.pos.clone(),
+            vel: this.player.vel.clone(),
+            randomMem: Math.floor(Math.random()*0xFFFFFF),
+            value: val
+        };
+        const msg = `💥 ${type} 💥\nDump: ${JSON.stringify(dump, null, 2)}`;
+        console.error(msg);
+        if(this.consoleElement){
+            const div = document.createElement('div');
+            div.style.color = '#ff4444';
+            div.textContent = msg;
+            this.consoleElement.appendChild(div);
+        }
+        throw new Error(msg);
     }
 
     start() {
@@ -247,6 +260,7 @@ Timestamp: ${new Date().toISOString()}
         this.player.vel.x = input.x;
         this.player.vel.z = input.z;
 
+        // Gravity and noclip
         if (!this.player.noclip) {
             if (this.keys['Space'] && this.player.onGround && !this.consoleOpen) {
                 this.player.vel.y = this.player.jumpSpeed;
@@ -279,12 +293,15 @@ Timestamp: ${new Date().toISOString()}
         }
         targetPos.y += bobOffset;
 
+        // Third-person offset
         if(this.thirdPerson) {
             const offset = new this.THREE.Vector3(0, 2, 4);
             targetPos.add(offset);
         }
 
         this.camera.position.lerp(targetPos, 0.15);
+
+        // LOCK Portal-style camera
         this.camera.rotation.set(this.rotation.x, this.rotation.y, 0);
 
         if(this.showFPS && this.fpsCounter){
