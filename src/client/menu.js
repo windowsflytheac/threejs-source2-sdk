@@ -3,90 +3,110 @@ export class Menu {
         this.engine = engine;
         this.menuOpen = false;
         this.mouseSensitivity = 0.0015;
-        this.menuElement = null;
         this._initMenu();
     }
 
     _initMenu() {
-        const div = document.createElement('div');
-        div.style.position = 'absolute';
-        div.style.top = '50%';
-        div.style.left = '50%';
-        div.style.transform = 'translate(-50%, -50%)';
-        div.style.width = '300px';
-        div.style.height = '400px';
-        div.style.backgroundColor = 'rgba(0,0,0,0.9)';
-        div.style.color = '#0f0';
-        div.style.fontFamily = 'monospace';
-        div.style.fontSize = '14px';
-        div.style.display = 'none';
-        div.style.padding = '10px';
-        div.style.border = '2px solid #0f0';
-        div.style.overflowY = 'auto';
-        this.menuElement = div;
-        document.body.appendChild(div);
+        // Create menu container
+        this.menuDiv = document.createElement('div');
+        this.menuDiv.style.position = 'absolute';
+        this.menuDiv.style.top = '0';
+        this.menuDiv.style.left = '0';
+        this.menuDiv.style.width = '100%';
+        this.menuDiv.style.height = '100%';
+        this.menuDiv.style.backgroundColor = 'rgba(0,0,0,0.85)';
+        this.menuDiv.style.color = '#00ff00';
+        this.menuDiv.style.fontFamily = 'monospace';
+        this.menuDiv.style.fontSize = '20px';
+        this.menuDiv.style.display = 'none';
+        this.menuDiv.style.textAlign = 'center';
+        this.menuDiv.style.paddingTop = '50px';
+        document.body.appendChild(this.menuDiv);
 
-        const title = document.createElement('div');
-        title.textContent = 'Main Menu';
-        title.style.fontSize = '16px';
-        title.style.marginBottom = '10px';
-        div.appendChild(title);
-
-        // Example settings
-        this._addSlider('Mouse Sensitivity', 0.0005, 0.01, this.mouseSensitivity, (val) => {
-            this.mouseSensitivity = parseFloat(val);
-            this.engine._logToConsole(`Mouse sensitivity set to ${this.mouseSensitivity.toFixed(4)}`);
+        // Buttons
+        this._addButton('Start Game', () => {
+            this.toggleMenu();
+            this.engine.start();
+            this.engine._logToConsole('Game started!');
         });
 
-        this._addButton('Toggle Third-Person', () => {
-            this.engine.thirdPerson = !this.engine.thirdPerson;
-            this.engine._logToConsole(`Third-person: ${this.engine.thirdPerson}`);
+        this._addButton('Settings', () => {
+            this._openSettings();
         });
 
-        this._addButton('Close Menu', () => { this.toggleMenu(); });
-
-        window.addEventListener('keydown', e => {
-            if(e.key === 'Escape') this.toggleMenu();
+        this._addButton('Quit', () => {
+            this.engine.stop();
+            this._logToMenu('Game stopped.');
         });
+
+        // FPS Counter toggle (checkbox)
+        const fpsDiv = document.createElement('div');
+        fpsDiv.style.marginTop = '30px';
+        fpsDiv.innerHTML = `
+            <label style="color:#0f0;">
+                <input type="checkbox" id="fpsToggle">
+                Show FPS
+            </label>
+        `;
+        this.menuDiv.appendChild(fpsDiv);
+        fpsDiv.querySelector('#fpsToggle').addEventListener('change', (e) => {
+            this.engine.showFPS = e.target.checked;
+        });
+
+        // Animated background (optional cubes)
+        this._initBackground();
+    }
+
+    _addButton(label, callback) {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.margin = '10px';
+        btn.style.padding = '10px 30px';
+        btn.style.fontSize = '18px';
+        btn.style.cursor = 'pointer';
+        btn.onclick = callback;
+        this.menuDiv.appendChild(btn);
     }
 
     toggleMenu() {
         this.menuOpen = !this.menuOpen;
-        this.menuElement.style.display = this.menuOpen ? 'block' : 'none';
-        if(this.menuOpen) document.exitPointerLock();
+        this.menuDiv.style.display = this.menuOpen ? 'block' : 'none';
+        if (this.menuOpen) {
+            document.exitPointerLock();
+        }
     }
 
-    _addButton(label, onClick) {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.style.width = '100%';
-        btn.style.marginBottom = '5px';
-        btn.addEventListener('click', onClick);
-        this.menuElement.appendChild(btn);
+    _openSettings() {
+        alert('Settings will go here!');
     }
 
-    _addSlider(label, min, max, value, onChange) {
-        const container = document.createElement('div');
-        container.style.marginBottom = '10px';
+    _logToMenu(msg) {
+        const div = document.createElement('div');
+        div.textContent = msg;
+        this.menuDiv.appendChild(div);
+    }
 
-        const lbl = document.createElement('div');
-        lbl.textContent = `${label}: ${value.toFixed(4)}`;
-        container.appendChild(lbl);
+    _initBackground() {
+        this.bgCubes = [];
+        const loader = this.engine.THREE;
+        const cubeMat = new loader.MeshStandardMaterial({ color: 0x00aaff });
+        for (let i=0; i<20; i++){
+            const cube = new loader.Mesh(new loader.BoxGeometry(1,1,1), cubeMat);
+            cube.position.set((Math.random()-0.5)*50, Math.random()*10+5, (Math.random()-0.5)*50);
+            this.engine.scene.add(cube);
+            this.bgCubes.push(cube);
+        }
 
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = min;
-        input.max = max;
-        input.step = (max-min)/1000;
-        input.value = value;
-        input.style.width = '100%';
-        input.addEventListener('input', (e) => {
-            const val = parseFloat(e.target.value);
-            lbl.textContent = `${label}: ${val.toFixed(4)}`;
-            onChange(val);
-        });
-        container.appendChild(input);
-
-        this.menuElement.appendChild(container);
+        // Animate
+        const animateBg = () => {
+            if(this.menuOpen){
+                for(const c of this.bgCubes){
+                    c.rotation.x += 0.01;
+                    c.rotation.y += 0.01;
+                }
+            }
+            requestAnimationFrame(animateBg);
+        }
+        animateBg();
     }
 }
