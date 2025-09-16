@@ -12,24 +12,35 @@ export class Engine {
 
         this.THREE = THREE;
 
-        // Player physics
         this.player = {
             pos: new THREE.Vector3(0, 2, 5),
             vel: new THREE.Vector3(0, 0, 0),
             speed: 6,
             jumpSpeed: 6,
             onGround: false,
-            height: 1.6
+            height: 1.6,
+            noclip: false
         };
 
         this.gravity = -18.0;
         this.groundY = 0.0;
 
-        this.rotation = { x: 0, y: 0 }; // pitch (x) and yaw (y)
+        this.rotation = { x: 0, y: 0 };
         this.keys = {};
+
+        // Dev settings
+        this.consoleOpen = false;
+        this.consoleElement = null;
+        this.commands = {};
+        this.sv_cheats = false;
+        this.showFPS = false;
+        this.thirdPerson = false;
+        this.fpsCounter = null;
 
         this._bindEvents();
         this._buildScene();
+        this._initConsole();
+        this._initCommands();
     }
 
     _buildScene() {
@@ -46,7 +57,6 @@ export class Engine {
         ground.receiveShadow = true;
         this.scene.add(ground);
 
-        // Example obstacles
         const boxMat = new this.THREE.MeshStandardMaterial({ color: 0x00aaff });
         for (let i=0;i<3;i++){
             const b = new this.THREE.Mesh(new this.THREE.BoxGeometry(1.6,1.6,1.6), boxMat);
@@ -59,16 +69,29 @@ export class Engine {
     }
 
     _bindEvents() {
-        window.addEventListener('keydown', e => { this.keys[e.code] = true; });
+        window.addEventListener('keydown', e => {
+            this.keys[e.code] = true;
+
+            // Toggle console
+            if (e.key === '~' || e.key === '`') {
+                this.consoleOpen = !this.consoleOpen;
+                if (this.consoleElement) {
+                    this.consoleElement.style.display = this.consoleOpen ? 'block' : 'none';
+                }
+            }
+        });
+
         window.addEventListener('keyup', e => { this.keys[e.code] = false; });
 
-        this.renderer.domElement.addEventListener('click', () => this.renderer.domElement.requestPointerLock());
+        this.renderer.domElement.addEventListener('click', () => {
+            if(!this.consoleOpen) this.renderer.domElement.requestPointerLock();
+        });
 
         window.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === this.renderer.domElement) {
+            if (document.pointerLockElement === this.renderer.domElement && !this.consoleOpen) {
                 const sensitivity = 0.0015;
-                this.rotation.y -= e.movementX * sensitivity; // yaw
-                this.rotation.x -= e.movementY * sensitivity; // pitch
+                this.rotation.y -= e.movementX * sensitivity;
+                this.rotation.x -= e.movementY * sensitivity;
                 this.rotation.x = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, this.rotation.x));
             }
         });
@@ -78,6 +101,81 @@ export class Engine {
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
+    }
+
+    _initConsole() {
+        const consoleDiv = document.createElement('div');
+        consoleDiv.style.position = 'absolute';
+        consoleDiv.style.bottom = '0';
+        consoleDiv.style.left = '0';
+        consoleDiv.style.width = '100%';
+        consoleDiv.style.height = '200px';
+        consoleDiv.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        consoleDiv.style.color = '#00ff00';
+        consoleDiv.style.fontFamily = 'monospace';
+        consoleDiv.style.fontSize = '14px';
+        consoleDiv.style.display = 'none';
+        consoleDiv.style.overflowY = 'auto';
+        consoleDiv.style.padding = '5px';
+        this.consoleElement = consoleDiv;
+        document.body.appendChild(consoleDiv);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.style.width = '100%';
+        input.style.background = 'black';
+        input.style.color = '#00ff00';
+        input.style.border = 'none';
+        input.style.outline = 'none';
+        input.style.fontFamily = 'monospace';
+        input.style.fontSize = '14px';
+        consoleDiv.appendChild(input);
+
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                const line = input.value.trim();
+                const args = line.split(' ');
+                const cmd = args.shift();
+                if(this.commands[cmd]) this.commands[cmd](...args);
+                this._logToConsole('> ' + line);
+                input.value = '';
+            }
+        });
+
+        // FPS counter
+        this.fpsCounter = document.createElement('div');
+        this.fpsCounter.style.position = 'absolute';
+        this.fpsCounter.style.top = '0';
+        this.fpsCounter.style.left = '0';
+        this.fpsCounter.style.color = '#0f0';
+        this.fpsCounter.style.fontFamily = 'monospace';
+        this.fpsCounter.style.fontSize = '12px';
+        document.body.appendChild(this.fpsCounter);
+    }
+
+    _logToConsole(msg) {
+        if(!this.consoleElement) return;
+        const div = document.createElement('div');
+        div.textContent = msg;
+        this.consoleElement.insertBefore(div, this.consoleElement.lastChild);
+        this.consoleElement.scrollTop = this.consoleElement.scrollHeight;
+    }
+
+    _initCommands() {
+        this.commands = {
+            noclip: () => { 
+                if(this.sv_cheats){
+                    this.player.noclip = !this.player.noclip; 
+                    this._logToConsole(`noclip: ${this.player.noclip}`);
+                }
+            },
+            cl_showfps: (val) => { this.showFPS = !!parseInt(val); },
+            sv_cheats: (val) => { this.sv_cheats = !!parseInt(val); this._logToConsole(`sv_cheats: ${this.sv_cheats}`); },
+            impulse: (val) => { 
+                if(this.sv_cheats) this.player.vel.y += parseFloat(val); 
+            },
+            thirdperson: () => { this.thirdPerson = !this.thirdPerson; this._logToConsole(`thirdPerson: ${this.thirdPerson}`); }
+        };
     }
 
     start() {
@@ -104,10 +202,12 @@ export class Engine {
         const right = new this.THREE.Vector3().crossVectors(forward, new this.THREE.Vector3(0,1,0));
 
         const input = new this.THREE.Vector3();
-        if (this.keys['KeyW']) input.add(forward);
-        if (this.keys['KeyS']) input.add(forward.clone().negate());
-        if (this.keys['KeyA']) input.add(right.clone().negate());
-        if (this.keys['KeyD']) input.add(right);
+        if (!this.consoleOpen) {
+            if (this.keys['KeyW']) input.add(forward);
+            if (this.keys['KeyS']) input.add(forward.clone().negate());
+            if (this.keys['KeyA']) input.add(right.clone().negate());
+            if (this.keys['KeyD']) input.add(right);
+        }
 
         if (input.lengthSq() > 0) {
             input.normalize();
@@ -117,20 +217,25 @@ export class Engine {
         this.player.vel.x = input.x;
         this.player.vel.z = input.z;
 
-        if (this.keys['Space'] && this.player.onGround) {
-            this.player.vel.y = this.player.jumpSpeed;
-            this.player.onGround = false;
+        // Gravity and noclip
+        if (!this.player.noclip) {
+            if (this.keys['Space'] && this.player.onGround && !this.consoleOpen) {
+                this.player.vel.y = this.player.jumpSpeed;
+                this.player.onGround = false;
+            }
+            this.player.vel.y += this.gravity * dt;
         }
 
-        this.player.vel.y += this.gravity * dt;
         this.player.pos.addScaledVector(this.player.vel, dt);
 
-        if (this.player.pos.y <= this.groundY) {
-            this.player.pos.y = this.groundY;
-            this.player.vel.y = 0;
-            this.player.onGround = true;
-        } else {
-            this.player.onGround = false;
+        if (!this.player.noclip) {
+            if (this.player.pos.y <= this.groundY) {
+                this.player.pos.y = this.groundY;
+                this.player.vel.y = 0;
+                this.player.onGround = true;
+            } else {
+                this.player.onGround = false;
+            }
         }
 
         const targetPos = new this.THREE.Vector3(
@@ -145,8 +250,25 @@ export class Engine {
         }
         targetPos.y += bobOffset;
 
+        // Third-person offset
+        if(this.thirdPerson) {
+            const offset = new this.THREE.Vector3(0, 2, 4);
+            targetPos.add(offset);
+        }
+
         this.camera.position.lerp(targetPos, 0.15);
+
+        // LOCK Portal-style camera
         this.camera.rotation.set(this.rotation.x, this.rotation.y, 0);
+
+        if(this.showFPS && this.fpsCounter){
+            const fps = (1 / dt).toFixed(1);
+            this.fpsCounter.textContent = `FPS: ${fps}`;
+        }
+
+        if(this.sky){
+            this.sky.position.copy(this.camera.position);
+        }
     }
 
     addCube(x, y, z, color = 0xff5500) {
@@ -162,13 +284,13 @@ export class Engine {
     setSkybox(texturePath) {
         const loader = new this.THREE.TextureLoader();
         loader.load(texturePath, (tex) => {
-            const geometry = new this.THREE.SphereGeometry(500, 32, 32);
-            const material = new this.THREE.MeshBasicMaterial({
-                map: tex,
-                side: this.THREE.BackSide
-            });
+            const materialArray = [];
+            for (let i = 0; i < 6; i++) {
+                materialArray.push(new this.THREE.MeshBasicMaterial({ map: tex, side: this.THREE.BackSide }));
+            }
+            const skyGeo = new this.THREE.BoxGeometry(1000, 1000, 1000);
             if (this.sky) this.scene.remove(this.sky);
-            this.sky = new this.THREE.Mesh(geometry, material);
+            this.sky = new this.THREE.Mesh(skyGeo, materialArray);
             this.scene.add(this.sky);
         });
     }
