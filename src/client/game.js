@@ -4,18 +4,22 @@ import { Engine } from './engine.js';
 // Create engine instance
 const engine = new Engine({ container: document.body });
 
-// Add some extra objects to the scene
-const boxMat = new THREE.MeshStandardMaterial({ color: 0xff5500 });
-for (let i = 0; i < 5; i++) {
-    const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), boxMat);
-    cube.position.set(Math.random() * 10 - 5, 0.5, -i * 3 - 2);
-    engine.scene.add(cube);
-}
+// Example helper: add cubes using the engine
+// (we add this method directly to engine for convenience)
+engine.addCube = function(x, y, z, color = 0xff5500) {
+    const cube = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color })
+    );
+    cube.position.set(x, y, z);
+    this.scene.add(cube);
+    return cube;
+};
 
-// Add simple lighting effect
-const pointLight = new THREE.PointLight(0xffffff, 1, 50);
-pointLight.position.set(5, 10, 5);
-engine.scene.add(pointLight);
+// Add some cubes to the scene
+engine.addCube(0, 0.5, -2);
+engine.addCube(2, 0.5, -4);
+engine.addCube(-2, 0.5, -6);
 
 // Start the engine loop
 engine.start();
