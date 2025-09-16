@@ -1,12 +1,21 @@
+// game.js
 import { Engine } from './engine.js';
 
-(async function init() {
-  const engine = new Engine({ container: document.body });
-  engine.start();
+// Create engine instance
+const engine = new Engine({ container: document.body });
 
-  // expose for debugging
-  window._engine = engine;
+// Add some extra objects to the scene
+const boxMat = new THREE.MeshStandardMaterial({ color: 0xff5500 });
+for (let i = 0; i < 5; i++) {
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), boxMat);
+    cube.position.set(Math.random() * 10 - 5, 0.5, -i * 3 - 2);
+    engine.scene.add(cube);
+}
 
-  // clean shutdown
-  window.addEventListener('beforeunload', () => engine.stop());
-})();
+// Add simple lighting effect
+const pointLight = new THREE.PointLight(0xffffff, 1, 50);
+pointLight.position.set(5, 10, 5);
+engine.scene.add(pointLight);
+
+// Start the engine loop
+engine.start();
