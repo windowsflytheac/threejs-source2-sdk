@@ -1,13 +1,16 @@
 import { Engine } from './engine.js';
+import { Menu } from './menu.js';
 
 const engine = new Engine({ container: document.body });
+const menu = new Menu(engine); // Start with menu open
 
-// Single-texture skybox
+// Skybox placeholder
 engine.setSkybox('textures/fixed_skybox_placeholder.png');
 
-// Test cubes
+// Add test cubes
 engine.addCube(0, 0.5, -2);
 engine.addCube(2, 0.5, -4);
 engine.addCube(-2, 0.5, -6);
 
-engine.start();
+// Weapons are integrated via engine.weapons
+engine.weapons.giveWeapon('pistol');
