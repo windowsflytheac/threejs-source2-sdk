@@ -3,7 +3,7 @@ import { Engine } from './engine.js';
 const engine = new Engine({ container: document.body });
 
 // Set your placeholder skybox image
-engine.setSkybox('textures/skybox_placeholder.png');
+engine.setSkybox('textures/fixed_skybox_placeholder.png');
 
 // Add cubes for testing
 engine.addCube(0, 0.5, -2);
