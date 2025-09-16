@@ -10,7 +10,7 @@ export class Engine {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.container.appendChild(this.renderer.domElement);
 
-        this.THREE = THREE; // Expose THREE for helpers
+        this.THREE = THREE;
 
         // Player physics
         this.player = {
@@ -25,7 +25,7 @@ export class Engine {
         this.gravity = -18.0;
         this.groundY = 0.0;
 
-        this.rotation = { x: 0, y: 0 };
+        this.rotation = { x: 0, y: 0 }; // pitch (x) and yaw (y)
         this.keys = {};
 
         this._bindEvents();
@@ -67,10 +67,8 @@ export class Engine {
         window.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement === this.renderer.domElement) {
                 const sensitivity = 0.0015;
-                this.rotation.y -= e.movementX * sensitivity;
-                this.rotation.x -= e.movementY * sensitivity;
-
-                // Clamp pitch to prevent looking too far up/down
+                this.rotation.y -= e.movementX * sensitivity; // yaw
+                this.rotation.x -= e.movementY * sensitivity; // pitch
                 this.rotation.x = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, this.rotation.x));
             }
         });
@@ -148,17 +146,9 @@ export class Engine {
         targetPos.y += bobOffset;
 
         this.camera.position.lerp(targetPos, 0.15);
-
-        // Smooth rotation with roll locked
-        this.camera.rotation.x = this.THREE.MathUtils.lerp(this.camera.rotation.x, this.rotation.x, 0.15);
-        this.camera.rotation.y = this.THREE.MathUtils.lerp(this.camera.rotation.y, this.rotation.y, 0.15);
-        this.camera.rotation.z = 0; // lock sideways tilt
-
-        // Keep skybox centered on camera
-        if (this.skyboxMesh) this.skyboxMesh.position.copy(this.camera.position);
+        this.camera.rotation.set(this.rotation.x, this.rotation.y, 0);
     }
 
-    // Helper method to safely add cubes
     addCube(x, y, z, color = 0xff5500) {
         const cube = new this.THREE.Mesh(
             new this.THREE.BoxGeometry(1, 1, 1),
@@ -169,17 +159,17 @@ export class Engine {
         return cube;
     }
 
-    // Skybox system
-    setSkybox(texture) {
-        if (this.skyboxMesh) this.scene.remove(this.skyboxMesh);
-
-        const size = 500;
-        const geometry = new this.THREE.BoxGeometry(size, size, size);
+    setSkybox(texturePath) {
         const loader = new this.THREE.TextureLoader();
-        const tex = loader.load(texture);
-        const material = new this.THREE.MeshBasicMaterial({ map: tex, side: this.THREE.BackSide });
-
-        this.skyboxMesh = new this.THREE.Mesh(geometry, material);
-        this.scene.add(this.skyboxMesh);
+        loader.load(texturePath, (tex) => {
+            const geometry = new this.THREE.SphereGeometry(500, 32, 32);
+            const material = new this.THREE.MeshBasicMaterial({
+                map: tex,
+                side: this.THREE.BackSide
+            });
+            if (this.sky) this.scene.remove(this.sky);
+            this.sky = new this.THREE.Mesh(geometry, material);
+            this.scene.add(this.sky);
+        });
     }
 }
