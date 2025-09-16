@@ -1,13 +1,13 @@
-// game.js
 import { Engine } from './engine.js';
 
-// Create engine instance
 const engine = new Engine({ container: document.body });
 
-// Add cubes using the engine helper
+// Set your placeholder skybox image
+engine.setSkybox('textures/skybox_placeholder.png');
+
+// Add cubes for testing
 engine.addCube(0, 0.5, -2);
 engine.addCube(2, 0.5, -4);
 engine.addCube(-2, 0.5, -6);
 
-// Start the engine loop
 engine.start();
