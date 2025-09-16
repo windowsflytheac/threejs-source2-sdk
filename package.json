@@ -1,0 +1,12 @@
+{
+  "name": "threejs-source-sdk",
+  "version": "0.0.1",
+  "description": "Barebones Three.js + simple physics player movement template",
+  "scripts": {
+    "dev": "live-server public --port=5173 --open=public/index.html"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "live-server": "^1.2.2"
+  }
+}
