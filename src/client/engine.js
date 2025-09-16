@@ -36,6 +36,7 @@ export class Engine {
         this.showFPS = false;
         this.thirdPerson = false;
         this.fpsCounter = null;
+        this.crashOverlay = null;
 
         this._bindEvents();
         this._buildScene();
@@ -72,7 +73,6 @@ export class Engine {
         window.addEventListener('keydown', e => {
             this.keys[e.code] = true;
 
-            // Toggle console
             if (e.key === '~' || e.key === '`') {
                 this.consoleOpen = !this.consoleOpen;
                 if (this.consoleElement) {
@@ -142,7 +142,6 @@ export class Engine {
             }
         });
 
-        // FPS counter
         this.fpsCounter = document.createElement('div');
         this.fpsCounter.style.position = 'absolute';
         this.fpsCounter.style.top = '0';
@@ -172,10 +171,89 @@ export class Engine {
             cl_showfps: (val) => { this.showFPS = !!parseInt(val); },
             sv_cheats: (val) => { this.sv_cheats = !!parseInt(val); this._logToConsole(`sv_cheats: ${this.sv_cheats}`); },
             impulse: (val) => { 
-                if(this.sv_cheats) this.player.vel.y += parseFloat(val); 
+                if(!this.sv_cheats) return;
+                if(!val || val.toLowerCase() === "help"){
+                    this._logToConsole("Usage: impulse <number>");
+                    this._logToConsole("Example: impulse 100 → launch vertically");
+                    this._logToConsole("Negative impulses crash the engine!");
+                    return;
+                }
+                const force = parseFloat(val);
+                if(isNaN(force)){
+                    console.warn("Impulse requires a number! Usage: impulse <force>");
+                    return;
+                }
+                if(force < 0){
+                    this._crashDump(force);
+                    return;
+                }
+                this.player.vel.y += force;
+                this._logToConsole(`Impulse applied: ${force} vertical`);
             },
             thirdperson: () => { this.thirdPerson = !this.thirdPerson; this._logToConsole(`thirdPerson: ${this.thirdPerson}`); }
         };
+    }
+
+    _crashDump(force){
+        const p = this.player.pos;
+        const v = this.player.vel;
+        const r = this.rotation;
+
+        const mem = {
+            playerObj: Math.floor(Math.random()*0xFFFFFF),
+            sceneObjs: Math.floor(Math.random()*500),
+            rendererID: Math.floor(Math.random()*0xFFFF)
+        };
+
+        const errorCode = `ERR_IMP_NEG_${Math.floor(Math.random()*9000+1000)}`;
+
+        const randomOffset = ()=> (Math.random()-0.5)*10;
+        const randPos = {x:(p.x+randomOffset()).toFixed(2), y:(p.y+randomOffset()).toFixed(2), z:(p.z+randomOffset()).toFixed(2)};
+        const randVel = {x:(v.x+randomOffset()).toFixed(2), y:(v.y+randomOffset()).toFixed(2), z:(v.z+randomOffset()).toFixed(2)};
+        const randRot = {pitch:(r.x+randomOffset()).toFixed(2), yaw:(r.y+randomOffset()).toFixed(2), roll:(Math.random()*0.5).toFixed(2)};
+
+        const dump = `
+💥 Engine Crash Dump 💥
+Error Code: ${errorCode}
+Time: ${new Date().toLocaleString()}
+Map: ${this.currentMap || "unknown"}
+
+--- Player State ---
+Position: (${randPos.x}, ${randPos.y}, ${randPos.z})
+Velocity: (${randVel.x}, ${randVel.y}, ${randVel.z})
+Camera Rotation: (pitch: ${randRot.pitch}, yaw: ${randRot.yaw}, roll: ${randRot.roll})
+
+--- Engine Memory Info ---
+Player Object ID: 0x${mem.playerObj.toString(16).padStart(6,"0")}
+Scene Objects: ${mem.sceneObjs}
+Renderer ID: 0x${mem.rendererID.toString(16).padStart(4,"0")}
+
+Impulse Force: ${force}
+Random Seed: ${Math.floor(Math.random()*1000000)}
+`;
+
+        if(!this.crashOverlay){
+            this.crashOverlay = document.createElement("pre");
+            this.crashOverlay.style.position = "fixed";
+            this.crashOverlay.style.top = "0";
+            this.crashOverlay.style.left = "0";
+            this.crashOverlay.style.width = "100%";
+            this.crashOverlay.style.height = "100%";
+            this.crashOverlay.style.background = "rgba(0,0,0,0.95)";
+            this.crashOverlay.style.color = "#ff4444";
+            this.crashOverlay.style.padding = "20px";
+            this.crashOverlay.style.overflow = "auto";
+            this.crashOverlay.style.fontFamily = "monospace";
+            this.crashOverlay.style.fontSize = "14px";
+            this.crashOverlay.style.zIndex = "9999";
+            document.body.appendChild(this.crashOverlay);
+        }
+
+        this.crashOverlay.textContent = dump;
+        this.crashOverlay.style.display = "block";
+
+        console.error(dump);
+        throw new Error(`💥 Engine crash! Negative impulse detected. Error Code: ${errorCode}`);
     }
 
     start() {
@@ -217,7 +295,6 @@ export class Engine {
         this.player.vel.x = input.x;
         this.player.vel.z = input.z;
 
-        // Gravity and noclip
         if (!this.player.noclip) {
             if (this.keys['Space'] && this.player.onGround && !this.consoleOpen) {
                 this.player.vel.y = this.player.jumpSpeed;
@@ -250,15 +327,12 @@ export class Engine {
         }
         targetPos.y += bobOffset;
 
-        // Third-person offset
         if(this.thirdPerson) {
             const offset = new this.THREE.Vector3(0, 2, 4);
             targetPos.add(offset);
         }
 
         this.camera.position.lerp(targetPos, 0.15);
-
-        // LOCK Portal-style camera
         this.camera.rotation.set(this.rotation.x, this.rotation.y, 0);
 
         if(this.showFPS && this.fpsCounter){
