@@ -1,4 +1,4 @@
-// Minimal Three.js + simple physics (gravity + simple ground collision)
+// Minimal Three.js + simple physics with smooth camera and head bob
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
 
 export class Engine {
@@ -11,7 +11,7 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.container.appendChild(this.renderer.domElement);
 
-    // player physics
+    // Player physics
     this.player = {
       pos: new THREE.Vector3(0, 2, 5),
       vel: new THREE.Vector3(0, 0, 0),
@@ -45,7 +45,7 @@ export class Engine {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // simple obstacles
+    // Simple obstacles
     const boxMat = new THREE.MeshStandardMaterial({ color: 0x00aaff });
     for (let i=0;i<3;i++){
       const b = new THREE.Mesh(new THREE.BoxGeometry(1.6,1.6,1.6), boxMat);
@@ -54,20 +54,21 @@ export class Engine {
     }
 
     this.camera.position.copy(this.player.pos);
-    this.camera.position.y = this.player.pos.y + this.player.height - 0.2;
+    this.camera.position.y = this.player.pos.y + this.player.height;
   }
 
   _bindEvents() {
     window.addEventListener('keydown', e => { this.keys[e.code] = true; });
     window.addEventListener('keyup', e => { this.keys[e.code] = false; });
 
-    // mouse look + pointer lock
+    // Mouse look + pointer lock
     this.renderer.domElement.addEventListener('click', () => this.renderer.domElement.requestPointerLock());
     window.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === this.renderer.domElement) {
-        this.rotation.y -= e.movementX * 0.0025;
-        this.rotation.x -= e.movementY * 0.0025;
-        this.rotation.x = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, this.rotation.x));
+        const sensitivity = 0.0015;
+        this.rotation.y -= e.movementX * sensitivity;
+        this.rotation.x -= e.movementY * sensitivity;
+        this.rotation.x = Math.max(-Math.PI/2 + 0.05, Math.min(Math.PI/2 - 0.05, this.rotation.x));
       }
     });
 
@@ -91,14 +92,14 @@ export class Engine {
 
   _tick() {
     if (!this.running) return;
-    const dt = Math.min(0.05, this.clock.getDelta()); // clamp delta to avoid large jumps
+    const dt = Math.min(0.05, this.clock.getDelta());
     this._update(dt);
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame(() => this._tick());
   }
 
   _update(dt) {
-    // input -> horizontal movement
+    // --- Movement Input ---
     const forward = new THREE.Vector3(-Math.sin(this.rotation.y), 0, -Math.cos(this.rotation.y));
     const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0));
 
@@ -113,33 +114,50 @@ export class Engine {
       input.multiplyScalar(this.player.speed);
     }
 
-    // horizontal velocity
+    // --- Apply horizontal velocity ---
     this.player.vel.x = input.x;
     this.player.vel.z = input.z;
 
-    // jump
+    // --- Jump ---
     if (this.keys['Space'] && this.player.onGround) {
       this.player.vel.y = this.player.jumpSpeed;
       this.player.onGround = false;
     }
 
-    // gravity
+    // --- Gravity ---
     this.player.vel.y += this.gravity * dt;
 
-    // integrate
+    // --- Integrate position ---
     this.player.pos.addScaledVector(this.player.vel, dt);
 
-    // simple ground collision
-    if (this.player.pos.y <= this.groundY + 0.01) {
-      this.player.pos.y = this.groundY + 0.01;
+    // --- Ground collision ---
+    if (this.player.pos.y <= this.groundY) {
+      this.player.pos.y = this.groundY;
       this.player.vel.y = 0;
       this.player.onGround = true;
     } else {
       this.player.onGround = false;
     }
 
-    // update camera
-    this.camera.position.set(this.player.pos.x, this.player.pos.y + this.player.height - 0.2, this.player.pos.z);
-    this.camera.rotation.set(this.rotation.x, this.rotation.y, 0);
+    // --- Smooth camera position with gentle head bob ---
+    const targetPos = new THREE.Vector3(
+      this.player.pos.x,
+      this.player.pos.y + this.player.height,
+      this.player.pos.z
+    );
+
+    // Head bob
+    let bobOffset = 0;
+    if (input.lengthSq() > 0 && this.player.onGround) {
+      const speed = this.player.speed;
+      bobOffset = Math.sin(Date.now() * 0.005 * speed) * 0.05;
+    }
+    targetPos.y += bobOffset;
+
+    this.camera.position.lerp(targetPos, 0.15);
+
+    // --- Smooth rotation ---
+    this.camera.rotation.x = THREE.MathUtils.lerp(this.camera.rotation.x, this.rotation.x, 0.15);
+    this.camera.rotation.y = THREE.MathUtils.lerp(this.camera.rotation.y, this.rotation.y, 0.15);
   }
 }
